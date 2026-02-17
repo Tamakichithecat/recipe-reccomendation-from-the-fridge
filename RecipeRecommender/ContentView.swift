@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-internal import Combine
 
 // MARK: - Models
 
@@ -24,6 +23,15 @@ struct IngredientRequirement: Identifiable {
     var unit: String
 }
 
+struct MissingIngredient: Identifiable {
+    let id = UUID()
+    var name: String
+    var requiredQuantity: Double
+    var currentQuantity: Double
+    var shortageQuantity: Double
+    var unit: String
+}
+
 struct Recipe: Identifiable {
     let id = UUID()
     var name: String
@@ -36,14 +44,27 @@ struct Store: Identifiable {
     let id = UUID()
     var name: String
     var distanceMinutes: Int
-    var pricePerIngredient: [String: Double]
+    var pricePerIngredient: [String: Double] // 必要単位あたりの価格として扱う
 }
 
 struct RecipeSuggestion {
     var recipe: Recipe
-    var missingIngredients: [IngredientRequirement]
+    var missingIngredients: [MissingIngredient]
     var store: Store?
-    var totalCost: Double // baseCost + missingCost
+    var totalCost: Double?
+    var unavailableReason: String?
+}
+
+private struct RecipeEvaluation {
+    var recipe: Recipe
+    var missingIngredients: [MissingIngredient]
+    var store: Store?
+    var totalCost: Double?
+    var unavailableReason: String?
+
+    var isPurchasable: Bool {
+        missingIngredients.isEmpty || store != nil
+    }
 }
 
 // MARK: - Recipe Engine
@@ -51,59 +72,125 @@ struct RecipeSuggestion {
 enum RecipeEngine {
     static func suggestRecipe(availableIngredients: [Ingredient], stores: [Store]) -> RecipeSuggestion? {
         let recipes = MockData.recipes
-        
-        // スコア算出：現有食材でどれだけ賄えるか
-        guard let bestRecipe = recipes
-            .map({ recipe -> (Recipe, Int) in
-                let matchCount = recipe.ingredients.filter { needed in
-                    availableIngredients.contains(where: { $0.name.lowercased() == needed.name.lowercased() && $0.quantity >= needed.quantityNeeded })
-                }.count
-                return (recipe, matchCount)
-            })
-            .sorted(by: { $0.1 > $1.1 })
-            .first?.0 else { return nil }
-        
-        // 不足食材を算出
-        let missing = bestRecipe.ingredients.filter { needed in
-            guard let stocked = availableIngredients.first(where: { $0.name.lowercased() == needed.name.lowercased() }) else {
-                return true
+
+        let evaluations = recipes.map { evaluate(recipe: $0, availableIngredients: availableIngredients, stores: stores) }
+
+        let purchasable = evaluations
+            .filter { $0.isPurchasable }
+            .sorted { lhs, rhs in
+                let lhsCost = lhs.totalCost ?? .infinity
+                let rhsCost = rhs.totalCost ?? .infinity
+
+                if lhsCost == rhsCost {
+                    let lhsDistance = lhs.store?.distanceMinutes ?? 0
+                    let rhsDistance = rhs.store?.distanceMinutes ?? 0
+                    return lhsDistance < rhsDistance
+                }
+
+                return lhsCost < rhsCost
             }
-            return stocked.quantity < needed.quantityNeeded
+
+        if let best = purchasable.first {
+            return RecipeSuggestion(
+                recipe: best.recipe,
+                missingIngredients: best.missingIngredients,
+                store: best.store,
+                totalCost: best.totalCost,
+                unavailableReason: nil
+            )
         }
-        
-        // 最安の店舗を算出
-        let store = findCheapestStore(missingIngredients: missing, stores: stores)
-        let missingCost = missing.reduce(0) { partialResult, needed in
-            partialResult + (store?.pricePerIngredient[needed.name] ?? 0)
-        }
-        
+
+        guard let fallback = evaluations.first else { return nil }
         return RecipeSuggestion(
-            recipe: bestRecipe,
-            missingIngredients: missing,
-            store: store,
-            totalCost: bestRecipe.baseCost + missingCost
+            recipe: fallback.recipe,
+            missingIngredients: fallback.missingIngredients,
+            store: nil,
+            totalCost: nil,
+            unavailableReason: "不足食材をすべて購入できる店舗が見つかりません。"
         )
     }
-    
-    private static func findCheapestStore(missingIngredients: [IngredientRequirement], stores: [Store]) -> Store? {
-        guard !missingIngredients.isEmpty else { return nil }
-        
-        return stores
-            .map { store -> (Store, Double) in
-                let cost = missingIngredients.reduce(0) { partialResult, ingredient in
-                    partialResult + (store.pricePerIngredient[ingredient.name] ?? .infinity)
-                }
-                return (store, cost)
+
+    private static func evaluate(recipe: Recipe, availableIngredients: [Ingredient], stores: [Store]) -> RecipeEvaluation {
+        let missing = missingIngredients(for: recipe, availableIngredients: availableIngredients)
+
+        if missing.isEmpty {
+            return RecipeEvaluation(
+                recipe: recipe,
+                missingIngredients: [],
+                store: nil,
+                totalCost: recipe.baseCost,
+                unavailableReason: nil
+            )
+        }
+
+        let (store, missingCost) = findCheapestStore(missingIngredients: missing, stores: stores)
+
+        guard let selectedStore = store, let purchaseCost = missingCost else {
+            return RecipeEvaluation(
+                recipe: recipe,
+                missingIngredients: missing,
+                store: nil,
+                totalCost: nil,
+                unavailableReason: "不足食材をすべて購入できる店舗が見つかりません。"
+            )
+        }
+
+        return RecipeEvaluation(
+            recipe: recipe,
+            missingIngredients: missing,
+            store: selectedStore,
+            totalCost: recipe.baseCost + purchaseCost,
+            unavailableReason: nil
+        )
+    }
+
+    private static func missingIngredients(for recipe: Recipe, availableIngredients: [Ingredient]) -> [MissingIngredient] {
+        recipe.ingredients.compactMap { needed in
+            let stocked = pantryQuantity(for: needed, in: availableIngredients)
+            let shortage = max(0, needed.quantityNeeded - stocked)
+            guard shortage > 0 else { return nil }
+
+            return MissingIngredient(
+                name: needed.name,
+                requiredQuantity: needed.quantityNeeded,
+                currentQuantity: stocked,
+                shortageQuantity: shortage,
+                unit: needed.unit
+            )
+        }
+    }
+
+    private static func pantryQuantity(for requirement: IngredientRequirement, in ingredients: [Ingredient]) -> Double {
+        ingredients
+            .filter {
+                $0.name.caseInsensitiveCompare(requirement.name) == .orderedSame
+                && $0.unit.caseInsensitiveCompare(requirement.unit) == .orderedSame
             }
-            .filter { $0.1 != .infinity }
-            .sorted {
-                if $0.1 == $1.1 {
-                    return $0.0.distanceMinutes < $1.0.distanceMinutes
-                } else {
-                    return $0.1 < $1.1
+            .reduce(0) { $0 + $1.quantity }
+    }
+
+    private static func findCheapestStore(missingIngredients: [MissingIngredient], stores: [Store]) -> (Store?, Double?) {
+        guard !missingIngredients.isEmpty else { return (nil, 0) }
+
+        let candidates = stores.compactMap { store -> (Store, Double)? in
+            var total = 0.0
+            for ingredient in missingIngredients {
+                guard let unitPrice = store.pricePerIngredient[ingredient.name] else {
+                    return nil
                 }
+                total += unitPrice * ingredient.shortageQuantity
             }
-            .first?.0
+            return (store, total)
+        }
+
+        let best = candidates.sorted {
+            if $0.1 == $1.1 {
+                return $0.0.distanceMinutes < $1.0.distanceMinutes
+            }
+            return $0.1 < $1.1
+        }.first
+
+        return (best?.0, best?.1)
     }
 }
 
@@ -139,7 +226,7 @@ enum MockData {
             baseCost: 250
         )
     ]
-    
+
     static let stores: [Store] = [
         Store(
             name: "スーパーA",
@@ -148,7 +235,9 @@ enum MockData {
                 "にんじん": 80,
                 "豆腐": 90,
                 "味噌": 150,
-                "鶏もも肉": 320
+                "鶏もも肉": 320,
+                "大根": 120,
+                "醤油": 10
             ]
         ),
         Store(
@@ -159,7 +248,9 @@ enum MockData {
                 "キャベツ": 150,
                 "豆腐": 100,
                 "鶏もも肉": 330,
-                "味噌": 170
+                "味噌": 170,
+                "大根": 110,
+                "醤油": 12
             ]
         )
     ]
@@ -168,27 +259,35 @@ enum MockData {
 // MARK: - ViewModel
 
 final class PantryViewModel: ObservableObject {
-    var objectWillChange: ObservableObjectPublisher
-    
     @Published var availableIngredients: [Ingredient] = [
         Ingredient(name: "キャベツ", quantity: 0.25, unit: "玉"),
         Ingredient(name: "味噌", quantity: 10, unit: "g")
     ]
     @Published var suggestion: RecipeSuggestion?
-    
+
     func generateSuggestion() {
         suggestion = RecipeEngine.suggestRecipe(
             availableIngredients: availableIngredients,
             stores: MockData.stores
         )
     }
-    
+
     func addIngredient(name: String, quantity: Double, unit: String) {
-        guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        let ingredient = Ingredient(name: name, quantity: quantity, unit: unit)
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty, quantity.isFinite, quantity > 0 else { return }
+
+        if let existingIndex = availableIngredients.firstIndex(where: {
+            $0.name.caseInsensitiveCompare(trimmedName) == .orderedSame
+            && $0.unit.caseInsensitiveCompare(unit) == .orderedSame
+        }) {
+            availableIngredients[existingIndex].quantity += quantity
+            return
+        }
+
+        let ingredient = Ingredient(name: trimmedName, quantity: quantity, unit: unit)
         availableIngredients.append(ingredient)
     }
-    
+
     func removeIngredients(at offsets: IndexSet) {
         availableIngredients.remove(atOffsets: offsets)
     }
@@ -201,7 +300,7 @@ struct ContentView: View {
     @State private var ingredientName = ""
     @State private var ingredientQuantity = ""
     @State private var ingredientUnit = "g"
-    
+
     var body: some View {
         NavigationView {
             VStack {
@@ -218,17 +317,17 @@ struct ContentView: View {
                         }
                         .onDelete(perform: viewModel.removeIngredients)
                     }
-                    
+
                     Section(header: Text("食材の追加")) {
                         VStack(alignment: .leading, spacing: 12) {
                             TextField("食材名（例：にんじん）", text: $ingredientName)
                                 .textFieldStyle(RoundedBorderTextFieldStyle())
-                            
+
                             HStack {
                                 TextField("数量", text: $ingredientQuantity)
                                     .keyboardType(.decimalPad)
                                     .textFieldStyle(RoundedBorderTextFieldStyle())
-                                
+
                                 Picker("単位", selection: $ingredientUnit) {
                                     ForEach(["g", "本", "玉", "丁", "ml"], id: \.self) { unit in
                                         Text(unit).tag(unit)
@@ -236,7 +335,7 @@ struct ContentView: View {
                                 }
                                 .pickerStyle(MenuPickerStyle())
                             }
-                            
+
                             Button(action: addIngredient) {
                                 Label("食材を追加", systemImage: "plus.circle.fill")
                             }
@@ -244,7 +343,7 @@ struct ContentView: View {
                         }
                     }
                 }
-                
+
                 Button {
                     viewModel.generateSuggestion()
                 } label: {
@@ -254,7 +353,7 @@ struct ContentView: View {
                 }
                 .padding()
                 .buttonStyle(.borderedProminent)
-                
+
                 if let suggestion = viewModel.suggestion {
                     RecipeSuggestionView(suggestion: suggestion)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -268,9 +367,9 @@ struct ContentView: View {
             .navigationTitle("今日の最安メニュー")
         }
     }
-    
+
     private func addIngredient() {
-        guard let quantity = Double(ingredientQuantity) else { return }
+        guard let quantity = Double(ingredientQuantity), quantity > 0 else { return }
         viewModel.addIngredient(name: ingredientName, quantity: quantity, unit: ingredientUnit)
         ingredientName = ""
         ingredientQuantity = ""
@@ -279,7 +378,7 @@ struct ContentView: View {
 
 struct RecipeSuggestionView: View {
     let suggestion: RecipeSuggestion
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Divider()
@@ -288,7 +387,7 @@ struct RecipeSuggestionView: View {
                 .bold()
             Text(suggestion.recipe.name)
                 .font(.title3)
-            
+
             Text("作り方")
                 .font(.headline)
             ForEach(Array(suggestion.recipe.steps.enumerated()), id: \.offset) { index, step in
@@ -298,7 +397,7 @@ struct RecipeSuggestionView: View {
                     Text(step)
                 }
             }
-            
+
             if suggestion.missingIngredients.isEmpty {
                 Label("追加購入なしで作れます！", systemImage: "checkmark.circle.fill")
                     .foregroundColor(.green)
@@ -307,9 +406,9 @@ struct RecipeSuggestionView: View {
                     Text("不足食材")
                         .font(.headline)
                     ForEach(suggestion.missingIngredients) { ingredient in
-                        Text("\(ingredient.name)：あと \(ingredient.quantityNeeded.clean) \(ingredient.unit)")
+                        Text("\(ingredient.name)：必要 \(ingredient.requiredQuantity.clean) \(ingredient.unit) / 保有 \(ingredient.currentQuantity.clean) \(ingredient.unit) / 不足 \(ingredient.shortageQuantity.clean) \(ingredient.unit)")
                     }
-                    
+
                     if let store = suggestion.store {
                         HStack {
                             Image(systemName: "cart.fill")
@@ -319,11 +418,23 @@ struct RecipeSuggestionView: View {
                     }
                 }
             }
-            
-            Text("合計想定額：¥\(Int(suggestion.totalCost))")
-                .font(.title3)
-                .bold()
-                .padding(.top, 8)
+
+            if let reason = suggestion.unavailableReason {
+                Label(reason, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundColor(.orange)
+            }
+
+            if let totalCost = suggestion.totalCost {
+                Text("合計想定額：¥\(Int(totalCost))")
+                    .font(.title3)
+                    .bold()
+                    .padding(.top, 8)
+            } else {
+                Text("合計想定額：算出不可")
+                    .font(.title3)
+                    .bold()
+                    .padding(.top, 8)
+            }
         }
         .padding()
         .background(.ultraThinMaterial)
@@ -341,4 +452,3 @@ extension Double {
         : String(self)
     }
 }
-
