@@ -50,14 +50,29 @@ struct ContentView: View {
                 }
 
                 Button {
-                    viewModel.generateSuggestion()
+                    Task {
+                        await viewModel.generateSuggestion()
+                    }
                 } label: {
-                    Text("最安レシピを提案")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
+                    if viewModel.isLoading {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                    } else {
+                        Text("最安レシピを提案")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                    }
                 }
                 .padding()
                 .buttonStyle(.borderedProminent)
+                .disabled(viewModel.isLoading)
+
+                if let errorMessage = viewModel.errorMessage {
+                    Text(errorMessage)
+                        .font(.footnote)
+                        .foregroundColor(.orange)
+                        .padding(.horizontal)
+                }
 
                 if let suggestion = viewModel.suggestion {
                     RecipeSuggestionView(suggestion: suggestion)

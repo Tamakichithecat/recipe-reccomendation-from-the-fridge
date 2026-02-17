@@ -1,6 +1,6 @@
 import Foundation
 
-struct Store: Identifiable {
+struct Store: Identifiable, Codable {
     let id = UUID()
     var name: String
     var distanceMinutes: Int
