@@ -40,6 +40,8 @@ final class PantryViewModel {
     }
 
     func removeIngredients(at offsets: IndexSet) {
-        availableIngredients.remove(atOffsets: offsets)
+        for index in offsets.sorted().reversed() {
+            availableIngredients.remove(at: index)
+        }
     }
 }
