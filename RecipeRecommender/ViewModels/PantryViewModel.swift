@@ -1,17 +1,18 @@
 import Foundation
-import SwiftUI
+import Observation
 
-final class PantryViewModel: ObservableObject {
-    private let dataStore: RecipeDataStore
+@Observable
+final class PantryViewModel {
+    private let dataStore: any RecipeDataStore
 
-    @Published var availableIngredients: [Ingredient] = [
+    var availableIngredients: [Ingredient] = [
         Ingredient(name: "キャベツ", quantity: 0.25, unit: "玉"),
         Ingredient(name: "味噌", quantity: 10, unit: "g")
     ]
 
-    @Published var suggestion: RecipeSuggestion?
+    var suggestion: RecipeSuggestion?
 
-    init(dataStore: RecipeDataStore = MockRecipeDataStore()) {
+    init(dataStore: any RecipeDataStore = MockRecipeDataStore()) {
         self.dataStore = dataStore
     }
 

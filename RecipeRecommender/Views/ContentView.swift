@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ContentView: View {
-    @StateObject private var viewModel = PantryViewModel()
+    @State private var viewModel = PantryViewModel()
     @State private var ingredientName = ""
     @State private var ingredientQuantity = ""
     @State private var ingredientUnit = "g"
@@ -70,6 +70,15 @@ struct ContentView: View {
                 }
             }
             .navigationTitle("今日の最安メニュー")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink {
+                        NearbyStoreSearchView()
+                    } label: {
+                        Label("最寄りスーパー", systemImage: "map")
+                    }
+                }
+            }
         }
     }
 
