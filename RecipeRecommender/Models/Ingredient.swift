@@ -5,6 +5,10 @@ struct Ingredient: Identifiable, Equatable {
     var name: String
     var quantity: Double
     var unit: String
+
+    static func == (lhs: Ingredient, rhs: Ingredient) -> Bool {
+        lhs.name == rhs.name && lhs.quantity == rhs.quantity && lhs.unit == rhs.unit
+    }
 }
 
 struct IngredientRequirement: Identifiable {

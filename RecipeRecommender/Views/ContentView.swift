@@ -7,7 +7,7 @@ struct ContentView: View {
     @State private var ingredientUnit = "g"
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             VStack {
                 List {
                     Section(header: Text("冷蔵庫の食材")) {
@@ -26,19 +26,19 @@ struct ContentView: View {
                     Section(header: Text("食材の追加")) {
                         VStack(alignment: .leading, spacing: 12) {
                             TextField("食材名（例：にんじん）", text: $ingredientName)
-                                .textFieldStyle(RoundedBorderTextFieldStyle())
+                                .textFieldStyle(.roundedBorder)
 
                             HStack {
                                 TextField("数量", text: $ingredientQuantity)
                                     .keyboardType(.decimalPad)
-                                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                                    .textFieldStyle(.roundedBorder)
 
                                 Picker("単位", selection: $ingredientUnit) {
                                     ForEach(["g", "本", "玉", "丁", "ml"], id: \.self) { unit in
                                         Text(unit).tag(unit)
                                     }
                                 }
-                                .pickerStyle(MenuPickerStyle())
+                                .pickerStyle(.menu)
                             }
 
                             Button(action: addIngredient) {
