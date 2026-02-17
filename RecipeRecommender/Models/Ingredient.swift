@@ -1,6 +1,6 @@
 import Foundation
 
-struct Ingredient: Identifiable, Equatable {
+struct Ingredient: Identifiable, Equatable, Codable {
     let id = UUID()
     var name: String
     var quantity: Double
@@ -11,14 +11,14 @@ struct Ingredient: Identifiable, Equatable {
     }
 }
 
-struct IngredientRequirement: Identifiable {
+struct IngredientRequirement: Identifiable, Codable {
     let id = UUID()
     var name: String
     var quantityNeeded: Double
     var unit: String
 }
 
-struct MissingIngredient: Identifiable {
+struct MissingIngredient: Identifiable, Codable {
     let id = UUID()
     var name: String
     var requiredQuantity: Double
