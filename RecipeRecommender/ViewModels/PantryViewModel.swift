@@ -30,7 +30,6 @@ final class PantryViewModel {
 
         do {
             suggestion = try await suggestionService.suggestRecipe(
-                recipes: dataStore.recipes,
                 availableIngredients: availableIngredients,
                 stores: dataStore.stores
             )
