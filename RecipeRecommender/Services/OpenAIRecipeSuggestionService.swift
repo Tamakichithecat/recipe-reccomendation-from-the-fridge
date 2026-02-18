@@ -8,10 +8,24 @@ protocol RecipeSuggestionService {
     ) async throws -> RecipeSuggestion
 }
 
-enum OpenAIRecipeSuggestionError: Error {
+enum OpenAIRecipeSuggestionError: LocalizedError {
     case missingAPIKey
+    case httpError(statusCode: Int, body: String)
     case invalidResponse
     case recipeNotFound
+
+    var errorDescription: String? {
+        switch self {
+        case .missingAPIKey:
+            return "OpenAI APIキーが設定されていません"
+        case .httpError(let code, let body):
+            return "APIエラー(\(code)): \(body)"
+        case .invalidResponse:
+            return "APIレスポンスの解析に失敗しました"
+        case .recipeNotFound:
+            return "該当するレシピが見つかりませんでした"
+        }
+    }
 }
 
 struct OpenAIRecipeSuggestionService: RecipeSuggestionService {
@@ -53,7 +67,8 @@ struct OpenAIRecipeSuggestionService: RecipeSuggestionService {
                     content: userPrompt(recipes: recipes, availableIngredients: availableIngredients, stores: stores)
                 )
             ],
-            temperature: 0
+            temperature: 0,
+            response_format: ResponseFormat(type: "json_object")
         )
 
         var request = URLRequest(url: URL(string: "https://api.openai.com/v1/chat/completions")!)
@@ -63,9 +78,14 @@ struct OpenAIRecipeSuggestionService: RecipeSuggestionService {
         request.httpBody = try JSONEncoder().encode(requestBody)
 
         let (data, response) = try await session.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200..<300).contains(httpResponse.statusCode) else {
+        guard let httpResponse = response as? HTTPURLResponse else {
             throw OpenAIRecipeSuggestionError.invalidResponse
+        }
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            let body = String(decoding: data, as: UTF8.self)
+            throw OpenAIRecipeSuggestionError.httpError(
+                statusCode: httpResponse.statusCode, body: body
+            )
         }
 
         let completion = try JSONDecoder().decode(ChatCompletionResponse.self, from: data)
@@ -155,6 +175,11 @@ private struct ChatCompletionRequest: Codable {
     var model: String
     var messages: [ChatMessage]
     var temperature: Double
+    var response_format: ResponseFormat?
+}
+
+private struct ResponseFormat: Codable {
+    var type: String
 }
 
 private struct ChatMessage: Codable {

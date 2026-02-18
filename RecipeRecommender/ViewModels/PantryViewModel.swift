@@ -40,7 +40,7 @@ final class PantryViewModel {
                 availableIngredients: availableIngredients,
                 stores: dataStore.stores
             )
-            errorMessage = "OpenAI APIの呼び出しに失敗したため、ローカル計算で提案しました。"
+            errorMessage = "OpenAI API失敗（\(error.localizedDescription)）。ローカル計算で提案しました。"
         }
 
         isLoading = false
