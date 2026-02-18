@@ -8,6 +8,7 @@
 
 /* Begin PBXFileReference section */
 		877532E72F44457000C84786 /* RecipeRecommender.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RecipeRecommender.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		877532FB2F44457200C84786 /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -32,6 +33,7 @@
 		877532DE2F44457000C84786 = {
 			isa = PBXGroup;
 			children = (
+				877532FB2F44457200C84786 /* Secrets.xcconfig */,
 				877532E92F44457000C84786 /* RecipeRecommender */,
 				877532E82F44457000C84786 /* Products */,
 			);
@@ -246,6 +248,7 @@
 		};
 		877532F32F44457200C84786 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 877532FB2F44457200C84786 /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -278,6 +281,7 @@
 		};
 		877532F42F44457200C84786 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 877532FB2F44457200C84786 /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
