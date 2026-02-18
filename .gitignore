@@ -1,0 +1,8 @@
+# Xcode
+*.xcuserdata
+*.xcscmblueprint
+xcuserdata/
+DerivedData/
+
+# API Keys
+Secrets.xcconfig
