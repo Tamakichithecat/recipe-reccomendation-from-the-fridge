@@ -6,10 +6,7 @@ final class PantryViewModel {
     private let dataStore: any RecipeDataStore
     private let suggestionService: any RecipeSuggestionService
 
-    var availableIngredients: [Ingredient] = [
-        Ingredient(name: "キャベツ", quantity: 0.25, unit: "玉"),
-        Ingredient(name: "味噌", quantity: 10, unit: "g")
-    ]
+    var availableIngredients: [Ingredient] = []
 
     var suggestion: RecipeSuggestion?
     var isLoading = false
