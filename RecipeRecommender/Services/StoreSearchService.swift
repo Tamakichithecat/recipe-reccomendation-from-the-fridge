@@ -17,7 +17,7 @@ enum StoreSearchService {
     static func searchNearbyStores(
         center: CLLocationCoordinate2D,
         radiusMeters: Double
-    ) async -> [NearbyStore] {
+    ) async throws -> [NearbyStore] {
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = "スーパーマーケット"
         request.region = MKCoordinateRegion(
@@ -27,10 +27,7 @@ enum StoreSearchService {
         )
 
         let search = MKLocalSearch(request: request)
-
-        guard let response = try? await search.start() else {
-            return []
-        }
+        let response = try await search.start()
 
         let userLocation = CLLocation(latitude: center.latitude, longitude: center.longitude)
 
