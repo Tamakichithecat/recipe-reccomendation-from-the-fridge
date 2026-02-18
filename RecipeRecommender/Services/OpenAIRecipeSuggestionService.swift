@@ -2,7 +2,6 @@ import Foundation
 
 protocol RecipeSuggestionService {
     func suggestRecipe(
-        recipes: [Recipe],
         availableIngredients: [Ingredient],
         stores: [Store]
     ) async throws -> RecipeSuggestion
@@ -12,7 +11,6 @@ enum OpenAIRecipeSuggestionError: LocalizedError {
     case missingAPIKey
     case httpError(statusCode: Int, body: String)
     case invalidResponse
-    case recipeNotFound
 
     var errorDescription: String? {
         switch self {
@@ -22,8 +20,6 @@ enum OpenAIRecipeSuggestionError: LocalizedError {
             return "APIエラー(\(code)): \(body)"
         case .invalidResponse:
             return "APIレスポンスの解析に失敗しました"
-        case .recipeNotFound:
-            return "該当するレシピが見つかりませんでした"
         }
     }
 }
@@ -47,7 +43,6 @@ struct OpenAIRecipeSuggestionService: RecipeSuggestionService {
     }
 
     func suggestRecipe(
-        recipes: [Recipe],
         availableIngredients: [Ingredient],
         stores: [Store]
     ) async throws -> RecipeSuggestion {
@@ -60,14 +55,14 @@ struct OpenAIRecipeSuggestionService: RecipeSuggestionService {
             messages: [
                 .init(
                     role: "system",
-                    content: "あなたは節約献立アシスタントです。必ず入力データのみを使い、最安で実現可能なレシピを1つ選び、JSONのみで返答してください。"
+                    content: "あなたは節約献立アシスタントです。ユーザーの手持ち食材を基に、簡単で美味しいレシピを1つ考案してください。手持ち食材をできるだけ活用し、追加購入が最小限になるレシピを提案してください。JSONのみで返答してください。"
                 ),
                 .init(
                     role: "user",
-                    content: userPrompt(recipes: recipes, availableIngredients: availableIngredients, stores: stores)
+                    content: userPrompt(availableIngredients: availableIngredients, stores: stores)
                 )
             ],
-            temperature: 0,
+            temperature: 0.7,
             response_format: ResponseFormat(type: "json_object")
         )
 
@@ -95,13 +90,17 @@ struct OpenAIRecipeSuggestionService: RecipeSuggestionService {
 
         let cleanedContent = sanitizeJSON(rawContent)
         let resultData = Data(cleanedContent.utf8)
-        let parsed = try JSONDecoder().decode(OpenAIRecipeDecision.self, from: resultData)
+        let parsed = try JSONDecoder().decode(OpenAIGeneratedRecipe.self, from: resultData)
 
-        guard let selectedRecipe = recipes.first(where: { $0.name == parsed.recipeName }) else {
-            throw OpenAIRecipeSuggestionError.recipeNotFound
-        }
+        let recipe = Recipe(
+            name: parsed.recipeName,
+            ingredients: parsed.ingredients.map {
+                IngredientRequirement(name: $0.name, quantityNeeded: $0.quantityNeeded, unit: $0.unit)
+            },
+            steps: parsed.steps,
+            baseCost: parsed.estimatedCost ?? 0
+        )
 
-        let selectedStore = stores.first(where: { $0.name == parsed.storeName })
         let missingIngredients = parsed.missingIngredients.map {
             MissingIngredient(
                 name: $0.name,
@@ -112,15 +111,16 @@ struct OpenAIRecipeSuggestionService: RecipeSuggestionService {
             )
         }
 
+        let selectedStore = stores.first(where: { $0.name == parsed.storeName })
+
         return RecipeSuggestion(
-            recipe: selectedRecipe,
+            recipe: recipe,
             missingIngredients: missingIngredients,
             store: selectedStore,
-            totalCost: parsed.totalCost,
-            unavailableReason: parsed.unavailableReason
+            totalCost: parsed.estimatedCost,
+            unavailableReason: nil
         )
     }
-
 
     private func sanitizeJSON(_ content: String) -> String {
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -132,35 +132,49 @@ struct OpenAIRecipeSuggestionService: RecipeSuggestionService {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private func userPrompt(recipes: [Recipe], availableIngredients: [Ingredient], stores: [Store]) -> String {
+    private func userPrompt(availableIngredients: [Ingredient], stores: [Store]) -> String {
         let payload = OpenAIRecipePromptPayload(
             availableIngredients: availableIngredients,
-            recipes: recipes,
             stores: stores,
-            outputFormat: "{\"recipeName\": string, \"storeName\": string | null, \"totalCost\": number | null, \"unavailableReason\": string | null, \"missingIngredients\": [{\"name\": string, \"requiredQuantity\": number, \"currentQuantity\": number, \"shortageQuantity\": number, \"unit\": string}]}"
+            outputFormat: """
+            {
+              "recipeName": "レシピ名",
+              "steps": ["手順1", "手順2", ...],
+              "ingredients": [{"name": "食材名", "quantityNeeded": 数量, "unit": "単位"}],
+              "missingIngredients": [{"name": "食材名", "requiredQuantity": 必要量, "currentQuantity": 手持ち量, "shortageQuantity": 不足量, "unit": "単位"}],
+              "storeName": "最安の店舗名 or null",
+              "estimatedCost": 概算費用(円)
+            }
+            """
         )
 
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = (try? encoder.encode(payload)) ?? Data()
         let json = String(decoding: data, as: UTF8.self)
-        return "次のデータから、最安で実現可能なレシピを1つ選んでください。説明文は不要、JSONのみ返答してください。\n\n\(json)"
+        return "次の手持ち食材と店舗情報を基に、簡単で節約できるレシピを1つ考案してください。手持ち食材をなるべく活用し、不足食材は最安の店舗で補えるようにしてください。説明文は不要、JSONのみ返答してください。\n\n\(json)"
     }
 }
 
 private struct OpenAIRecipePromptPayload: Codable {
     var availableIngredients: [Ingredient]
-    var recipes: [Recipe]
     var stores: [Store]
     var outputFormat: String
 }
 
-private struct OpenAIRecipeDecision: Codable {
+private struct OpenAIGeneratedRecipe: Codable {
     var recipeName: String
-    var storeName: String?
-    var totalCost: Double?
-    var unavailableReason: String?
+    var steps: [String]
+    var ingredients: [OpenAIIngredient]
     var missingIngredients: [OpenAIMissingIngredient]
+    var storeName: String?
+    var estimatedCost: Double?
+}
+
+private struct OpenAIIngredient: Codable {
+    var name: String
+    var quantityNeeded: Double
+    var unit: String
 }
 
 private struct OpenAIMissingIngredient: Codable {
