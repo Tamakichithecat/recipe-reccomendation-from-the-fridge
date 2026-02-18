@@ -65,4 +65,10 @@ final class PantryViewModel {
             availableIngredients.remove(at: index)
         }
     }
+
+    func reset() {
+        availableIngredients = []
+        suggestion = nil
+        errorMessage = nil
+    }
 }
