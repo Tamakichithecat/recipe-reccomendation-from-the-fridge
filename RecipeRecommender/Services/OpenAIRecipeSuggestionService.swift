@@ -31,11 +31,18 @@ struct OpenAIRecipeSuggestionService: RecipeSuggestionService {
     init(
         session: URLSession = .shared,
         apiKeyProvider: @escaping () -> String? = {
+            // 1. Xcode Scheme 環境変数（Edit Scheme > Run > Environment Variables）
+            if let envKey = ProcessInfo.processInfo.environment["OPENAI_API_KEY"],
+               !envKey.isEmpty {
+                return envKey
+            }
+            // 2. Info.plist（xcconfig の INFOPLIST_KEY_ 経由）
             if let plistKey = Bundle.main.object(forInfoDictionaryKey: "OPENAI_API_KEY") as? String,
-               !plistKey.isEmpty {
+               !plistKey.isEmpty,
+               !plistKey.hasPrefix("sk-placeholder") {
                 return plistKey
             }
-            return ProcessInfo.processInfo.environment["OPENAI_API_KEY"]
+            return nil
         }
     ) {
         self.session = session
