@@ -7,6 +7,7 @@ struct NearbyStoreSearchView: View {
     @State private var nearbyStores: [NearbyStore] = []
     @State private var isSearching = false
     @State private var hasSearched = false
+    @State private var searchError: String?
     @State private var cameraPosition: MapCameraPosition = .automatic
 
     var body: some View {
@@ -104,6 +105,13 @@ struct NearbyStoreSearchView: View {
                     .foregroundColor(.red)
             }
         }
+
+        if let error = searchError {
+            Section {
+                Label(error, systemImage: "magnifyingglass.circle.fill")
+                    .foregroundColor(.red)
+            }
+        }
     }
 
     // MARK: - Search Results
@@ -143,12 +151,18 @@ struct NearbyStoreSearchView: View {
               let radius = Double(searchRadiusText), radius > 0 else { return }
 
         isSearching = true
+        searchError = nil
         Task {
-            let stores = await StoreSearchService.searchNearbyStores(
-                center: location.coordinate,
-                radiusMeters: radius
-            )
-            nearbyStores = stores
+            do {
+                let stores = try await StoreSearchService.searchNearbyStores(
+                    center: location.coordinate,
+                    radiusMeters: radius
+                )
+                nearbyStores = stores
+            } catch {
+                searchError = "店舗検索に失敗しました: \(error.localizedDescription)"
+                nearbyStores = []
+            }
             isSearching = false
             hasSearched = true
             cameraPosition = .region(
