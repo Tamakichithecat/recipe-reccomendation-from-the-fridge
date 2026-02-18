@@ -5,6 +5,7 @@ struct ContentView: View {
     @State private var ingredientName = ""
     @State private var ingredientQuantity = ""
     @State private var ingredientUnit = "g"
+    @State private var navigateToSuggestion = false
 
     var body: some View {
         NavigationStack {
@@ -52,6 +53,7 @@ struct ContentView: View {
                 Button {
                     Task {
                         await viewModel.generateSuggestion()
+                        navigateToSuggestion = true
                     }
                 } label: {
                     if viewModel.isLoading {
@@ -65,23 +67,13 @@ struct ContentView: View {
                 }
                 .padding()
                 .buttonStyle(.borderedProminent)
-                .disabled(viewModel.isLoading)
+                .disabled(viewModel.isLoading || viewModel.availableIngredients.isEmpty)
 
                 if let errorMessage = viewModel.errorMessage {
                     Text(errorMessage)
                         .font(.footnote)
                         .foregroundColor(.orange)
                         .padding(.horizontal)
-                }
-
-                if let suggestion = viewModel.suggestion {
-                    RecipeSuggestionView(suggestion: suggestion)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                        .animation(.spring(), value: suggestion.recipe.id)
-                } else {
-                    Text("最安レシピを表示するにはボタンを押してください")
-                        .foregroundColor(.secondary)
-                        .padding(.bottom, 16)
                 }
             }
             .navigationTitle("今日の最安メニュー")
@@ -91,6 +83,18 @@ struct ContentView: View {
                         NearbyStoreSearchView()
                     } label: {
                         Label("最寄りスーパー", systemImage: "map")
+                    }
+                }
+            }
+            .navigationDestination(isPresented: $navigateToSuggestion) {
+                if let suggestion = viewModel.suggestion {
+                    RecipeSuggestionView(
+                        suggestion: suggestion,
+                        ingredients: viewModel.availableIngredients,
+                        errorMessage: viewModel.errorMessage
+                    ) {
+                        viewModel.reset()
+                        navigateToSuggestion = false
                     }
                 }
             }
