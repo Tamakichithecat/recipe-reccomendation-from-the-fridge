@@ -26,34 +26,17 @@ enum OpenAIRecipeSuggestionError: LocalizedError {
 
 struct OpenAIRecipeSuggestionService: RecipeSuggestionService {
     private let session: URLSession
-    private let apiKeyProvider: () -> String?
 
-    init(
-        session: URLSession = .shared,
-        apiKeyProvider: @escaping () -> String? = {
-            // 1. Xcode Scheme 環境変数（Edit Scheme > Run > Environment Variables）
-            if let envKey = ProcessInfo.processInfo.environment["OPENAI_API_KEY"],
-               !envKey.isEmpty {
-                return envKey
-            }
-            // 2. Info.plist（xcconfig の INFOPLIST_KEY_ 経由）
-            if let plistKey = Bundle.main.object(forInfoDictionaryKey: "OPENAI_API_KEY") as? String,
-               !plistKey.isEmpty,
-               !plistKey.hasPrefix("sk-placeholder") {
-                return plistKey
-            }
-            return nil
-        }
-    ) {
+    init(session: URLSession = .shared) {
         self.session = session
-        self.apiKeyProvider = apiKeyProvider
     }
 
     func suggestRecipe(
         availableIngredients: [Ingredient],
         stores: [Store]
     ) async throws -> RecipeSuggestion {
-        guard let apiKey = apiKeyProvider(), !apiKey.isEmpty else {
+        guard let apiKey = ProcessInfo.processInfo.environment["OPENAI_API_KEY"],
+              !apiKey.isEmpty else {
             throw OpenAIRecipeSuggestionError.missingAPIKey
         }
 
