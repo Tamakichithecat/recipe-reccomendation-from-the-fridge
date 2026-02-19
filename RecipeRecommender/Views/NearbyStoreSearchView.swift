@@ -2,7 +2,7 @@ import SwiftUI
 import MapKit
 
 struct NearbyStoreSearchView: View {
-    @State private var locationManager = LocationManager()
+    @Environment(LocationManager.self) private var locationManager
     @State private var searchRadiusText = "500"
     @State private var nearbyStores: [NearbyStore] = []
     @State private var isSearching = false
@@ -16,9 +16,6 @@ struct NearbyStoreSearchView: View {
             listSection
         }
         .navigationTitle("最寄りのスーパー検索")
-        .onAppear {
-            locationManager.requestPermission()
-        }
     }
 
     // MARK: - Map
@@ -83,10 +80,6 @@ struct NearbyStoreSearchView: View {
         if locationManager.currentLocation == nil {
             Section {
                 switch locationManager.authorizationStatus {
-                case .notDetermined:
-                    Button("位置情報の使用を許可") {
-                        locationManager.requestPermission()
-                    }
                 case .denied, .restricted:
                     Label(
                         "位置情報の使用が許可されていません。設定アプリから許可してください。",
